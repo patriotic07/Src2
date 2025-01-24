@@ -128,7 +128,7 @@ def send_start(client: pyrogram.client.Client, message: pyrogram.types.messages_
     bot.send_message(
         message.chat.id,
         f"__👋 Hi **{message.from_user.mention}**, I am Save Restricted Bot, I can send you restricted content by its post link__\n\n{USAGE}",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Source Code", url="https://t.me/tgbin07")]]),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Source Code", url="https://t.me/tgberlin07")]]),
         reply_to_message_id=message.id
     )
 
