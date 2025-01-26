@@ -54,7 +54,7 @@ def is_authorized(message):
             message.chat.id,
             "❌ You must join our channel to use this bot.",
             reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("Join Channel", url=f"https://t.me/c/{REQUIRED_CHANNEL}")]]
+                [[InlineKeyboardButton("Join Channel", url=f"https://t.me/tgberlin07")]]
             ),
             reply_to_message_id=message.id
         )
@@ -84,11 +84,9 @@ def broadcast_message(client, message):
 
     bot.send_message(
         message.chat.id,
-        f"✅ Broadcast completed.
-
-📤 Sent: {sent}
-❌ Failed: {failed}"
+        f"✅ Broadcast completed.\n\n📤 Sent: {sent}\n❌ Failed: {failed}"
     )
+
 
 # Get total user count
 @bot.on_message(filters.command("total_users") & filters.user(OWNER_ID))
