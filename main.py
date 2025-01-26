@@ -1,3 +1,4 @@
+
 import pyrogram
 from pyrogram import Client, filters
 from pyrogram.errors import UserAlreadyParticipant, InviteHashExpired, UsernameNotOccupied
@@ -23,170 +24,178 @@ bot = Client("mybot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 # Define Owner ID
 OWNER_ID = int(getenv("OWNER_ID"))  # Add your Telegram user ID in the config.json or environment variables
 
-# Authorized Users and Channels (Tracking users and channels)
+# Authorized Users (Tracking users)
 AUTHORIZED_USERS = set(DATA.get("AUTHORIZED_USERS", []))  # Load from config.json as a set
-AUTHORIZED_CHANNELS = set(DATA.get("AUTHORIZED_CHANNELS", []))  # Load from config.json as a set
 TRACKING_CHANNEL = int(getenv("TRACKING_CHANNEL"))  # Load tracking channel ID dynamically
 
-# Download status
-def downstatus(statusfile, message):
-    while True:
-        if os.path.exists(statusfile):
-            break
-    time.sleep(3)
-    while os.path.exists(statusfile):
-        with open(statusfile, "r") as downread:
-            txt = downread.read()
-        try:
-            bot.edit_message_text(message.chat.id, message.id, f"__Downloaded__ : **{txt}**")
-            time.sleep(10)
-        except:
-            time.sleep(5)
+# Required Channel to Join
+REQUIRED_CHANNEL = int(getenv("REQUIRED_CHANNEL"))  # Add your channel ID in config.json
 
-# Upload status
-def upstatus(statusfile, message):
-    while True:
-        if os.path.exists(statusfile):
-            break
-    time.sleep(3)
-    while os.path.exists(statusfile):
-        with open(statusfile, "r") as upread:
-            txt = upread.read()
-        try:
-            bot.edit_message_text(message.chat.id, message.id, f"__Uploaded__ : **{txt}**")
-            time.sleep(10)
-        except:
-            time.sleep(5)
+# Registered Users (For total user count)
+REGISTERED_USERS = set()
 
-# Progress writer
-def progress(current, total, message, type):
-    with open(f'{message.id}{type}status.txt', "w") as fileup:
-        fileup.write(f"{current * 100 / total:.1f}%")
+@bot.on_message(filters.private)
+def register_user(client, message):
+    if message.from_user.id not in REGISTERED_USERS:
+        REGISTERED_USERS.add(message.from_user.id)
 
-# Add authorized user dynamically
-@bot.on_message(filters.command(["add_user"]))
-def add_user(client, message):
-    if message.from_user.id != OWNER_ID:
-        bot.send_message(message.chat.id, "❌ Only the bot owner can add new users.", reply_to_message_id=message.id)
-        return
-
+# Check if user has joined the required channel
+def is_joined_channel(user_id):
     try:
-        user_id = int(message.command[1])
-        AUTHORIZED_USERS.add(user_id)
-        bot.send_message(message.chat.id, f"✅ User {user_id} has been successfully added to the authorized list.", reply_to_message_id=message.id)
-    except (IndexError, ValueError):
-        bot.send_message(message.chat.id, "❌ Please provide a valid user ID. Use: /add_user <user_id>", reply_to_message_id=message.id)
-
-# Remove authorized user dynamically
-@bot.on_message(filters.command(["remove_user"]))
-def remove_user(client, message):
-    if message.from_user.id != OWNER_ID:
-        bot.send_message(message.chat.id, "❌ Only the bot owner can remove users.", reply_to_message_id=message.id)
-        return
-
-    try:
-        user_id = int(message.command[1])
-        if user_id in AUTHORIZED_USERS:
-            AUTHORIZED_USERS.remove(user_id)
-            bot.send_message(message.chat.id, f"✅ User {user_id} has been removed from the authorized list.", reply_to_message_id=message.id)
-        else:
-            bot.send_message(message.chat.id, "❌ This user is not in the authorized list.", reply_to_message_id=message.id)
-    except (IndexError, ValueError):
-        bot.send_message(message.chat.id, "❌ Please provide a valid user ID. Use: /remove_user <user_id>", reply_to_message_id=message.id)
-
-# List all authorized users
-@bot.on_message(filters.command(["list_users"]))
-def list_users(client, message):
-    if message.from_user.id != OWNER_ID:
-        bot.send_message(message.chat.id, "❌ Only the bot owner can view the authorized users list.", reply_to_message_id=message.id)
-        return
-
-    if not AUTHORIZED_USERS:
-        bot.send_message(message.chat.id, "ℹ️ No users are currently authorized.", reply_to_message_id=message.id)
-    else:
-        user_list = "\n".join(map(str, AUTHORIZED_USERS))
-        bot.send_message(message.chat.id, f"✅ **Authorized Users:**\n{user_list}", reply_to_message_id=message.id)
+        member = bot.get_chat_member(REQUIRED_CHANNEL, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
 
 # Check if user is authorized
 def is_authorized(message):
+    if not is_joined_channel(message.from_user.id):
+        bot.send_message(
+            message.chat.id,
+            "❌ You must join our channel to use this bot.",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("Join Channel", url=f"https://t.me/c/{REQUIRED_CHANNEL}")]]
+            ),
+            reply_to_message_id=message.id
+        )
+        return False
+
     if message.from_user.id not in AUTHORIZED_USERS:
         bot.send_message(message.chat.id, "Sorry, you are not authorized to use this bot.")
         return False
     return True
 
-# Check if channel is authorized
-def is_channel_authorized(channel_id):
-    if channel_id not in AUTHORIZED_CHANNELS:
-        return False
-    return True
+# Broadcast messages
+@bot.on_message(filters.command("broadcast") & filters.user(OWNER_ID))
+def broadcast_message(client, message):
+    if len(message.command) < 2:
+        bot.send_message(message.chat.id, "❌ Please provide a message to broadcast.")
+        return
+
+    broadcast_text = message.text.split(" ", 1)[1]
+    sent, failed = 0, 0
+
+    for user_id in REGISTERED_USERS:
+        try:
+            bot.send_message(user_id, broadcast_text)
+            sent += 1
+        except Exception:
+            failed += 1
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Broadcast completed.
+
+📤 Sent: {sent}
+❌ Failed: {failed}"
+    )
+
+# Get total user count
+@bot.on_message(filters.command("total_users") & filters.user(OWNER_ID))
+def total_users(client, message):
+    total = len(REGISTERED_USERS)
+    bot.send_message(message.chat.id, f"👥 Total registered users: {total}")
 
 # Start command
 @bot.on_message(filters.command(["start"]))
 def send_start(client: pyrogram.client.Client, message: pyrogram.types.messages_and_media.message.Message):
-    if not is_authorized(message):
+    if not is_joined_channel(message.from_user.id):
+        bot.send_message(
+            message.chat.id,
+            "If you want to use me, you need to join our channel first.",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("Join Channel", url=f"https://t.me/tgberlin07")]]
+            ),
+            reply_to_message_id=message.id
+        )
         return
+
+    REGISTERED_USERS.add(message.from_user.id)
+
     bot.send_message(
         message.chat.id,
-        f"__👋 Hi **{message.from_user.mention}**, I am Save Restricted Bot, I can send you restricted content by its post link__\n\n{USAGE}",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Source Code", url="https://t.me/tgberlin07")]]),
-        reply_to_message_id=message.id
+        f"__👋 Hi **{message.from_user.mention}**, I am Save Restricted Bot, I can send you restricted content by its post link__",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Source Code", url="https://t.me/tgberlin07")]])
     )
-
 @bot.on_message(filters.text)
 def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_media.message.Message):
-    if not is_authorized(message):
-        return
+	print(message.text)
 
-    print(message.text)
+	# joining chats
+	if "https://t.me/+" in message.text or "https://t.me/joinchat/" in message.text:
 
-    # Joining chats
-    if "https://t.me/+" in message.text or "https://t.me/joinchat/" in message.text:
-        bot.send_message(message.chat.id, f"**String Session is not Set**", reply_to_message_id=message.id)
-        return
+		if acc is None:
+			bot.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
+			return
 
-    # Getting message
-    elif "https://t.me/" in message.text:
-        datas = message.text.split("/")
-        temp = datas[-1].replace("?single", "").split("-")
-        fromID = int(temp[0].strip())
-        try:
-            toID = int(temp[1].strip())
-        except:
-            toID = fromID
+		try:
+			try: acc.join_chat(message.text)
+			except Exception as e: 
+				bot.send_message(message.chat.id,f"**Error** : __{e}__", reply_to_message_id=message.id)
+				return
+			bot.send_message(message.chat.id,"**Chat Joined**", reply_to_message_id=message.id)
+		except UserAlreadyParticipant:
+			bot.send_message(message.chat.id,"**Chat alredy Joined**", reply_to_message_id=message.id)
+		except InviteHashExpired:
+			bot.send_message(message.chat.id,"**Invalid Link**", reply_to_message_id=message.id)
 
-        for msgid in range(fromID, toID + 1):
-            username = datas[3]
+	# getting message
+	elif "https://t.me/" in message.text:
 
-            try:
-                # Fetch channel info to get channel ID
-                channel = bot.get_chat(username)
-                channel_id = channel.id
+		datas = message.text.split("/")
+		temp = datas[-1].replace("?single","").split("-")
+		fromID = int(temp[0].strip())
+		try: toID = int(temp[1].strip())
+		except: toID = fromID
 
-                # Check if the channel is authorized
-                if not is_channel_authorized(channel_id):
-                    bot.send_message(message.chat.id, f"**Unauthorized channel**: {channel_id}", reply_to_message_id=message.id)
-                    return
+		for msgid in range(fromID, toID+1):
 
-                # Fetch the message
-                msg = bot.get_messages(channel_id, msgid)
+			# private
+			if "https://t.me/c/" in message.text:
+				chatid = int("-100" + datas[4])
+				
+				if acc is None:
+					bot.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
+					return
+				
+				handle_private(message,chatid,msgid)
+				# try: handle_private(message,chatid,msgid)
+				# except Exception as e: bot.send_message(message.chat.id,f"**Error** : __{e}__", reply_to_message_id=message.id)
+			
+			# bot
+			elif "https://t.me/b/" in message.text:
+				username = datas[4]
+				
+				if acc is None:
+					bot.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
+					return
+				try: handle_private(message,username,msgid)
+				except Exception as e: bot.send_message(message.chat.id,f"**Error** : __{e}__", reply_to_message_id=message.id)
 
-                # Tracking who forwarded the message in your tracking channel
-                bot.send_message(
-                    TRACKING_CHANNEL,
-                    f"**{message.from_user.mention}** forwarded a message from channel **{channel_id}**",
-                    reply_to_message_id=message.id
-                )
+			# public
+			else:
+				username = datas[3]
 
-                if '?single' not in message.text:
-                    bot.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
-                else:
-                    bot.copy_media_group(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+				try: msg  = bot.get_messages(username,msgid)
+				except UsernameNotOccupied: 
+					bot.send_message(message.chat.id,f"**The username is not occupied by anyone**", reply_to_message_id=message.id)
+					return
+				try:
+					if '?single' not in message.text:
+						bot.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+					else:
+						bot.copy_media_group(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+				except:
+					if acc is None:
+						bot.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
+						return
+					try: handle_private(message,username,msgid)
+					except Exception as e: bot.send_message(message.chat.id,f"**Error** : __{e}__", reply_to_message_id=message.id)
 
-            except:
-                bot.send_message(message.chat.id, f"**Error** : __Unable to fetch the message__.", reply_to_message_id=message.id)
+			# wait time
+			time.sleep(3)
 
-            # Wait time
-            time.sleep(3)
+
 # handle private
 def handle_private(message: pyrogram.types.messages_and_media.message.Message, chatid: int, msgid: int):
 		msg: pyrogram.types.messages_and_media.message.Message = acc.get_messages(chatid,msgid)
@@ -288,7 +297,7 @@ def get_message_type(msg: pyrogram.types.messages_and_media.message.Message):
 		return "Text"
 	except: pass
 
-# USAGE instructions
+
 USAGE = """**FOR PUBLIC CHATS**
 
 __just send post/s link__
@@ -319,5 +328,6 @@ https://t.me/c/xxxx/101 - 120
 __note that space in between doesn't matter__
 """
 
-# Infinitely polling
+
+# infinty polling
 bot.run()
