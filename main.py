@@ -65,8 +65,8 @@ def progress(current, total, message, type):
 		fileup.write(f"{current * 100 / total:.1f}%")
 
 # Authorized users
-AUTH_USERS = [123456789, 987654321]  # Add authorized user IDs here
-OWNER_ID = 123456789  # Replace with your Telegram user ID
+AUTH_USERS = [7645935938]  # Add authorized user IDs here
+OWNER_ID = 7645935938  # Replace with your Telegram user ID
 
 # Authentication decorator
 def authorized_only(func):
@@ -91,7 +91,7 @@ def send_start(client: pyrogram.client.Client, message: pyrogram.types.messages_
         message.chat.id,
         f"👋 Hi **{message.from_user.mention}**, I am Save Restricted Bot.\n\n{USAGE}",
         reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🌐 Source Code", url="https://github.com/bipinkrish/Save-Restricted-Bot")]]
+            [[InlineKeyboardButton("🌐 Source Code", url="https://github.com")]]
         ),
         reply_to_message_id=message.id
     )
